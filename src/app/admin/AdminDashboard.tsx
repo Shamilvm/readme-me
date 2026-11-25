@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { ReadmeCard } from "@/components/ReadmeCard";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -15,9 +15,9 @@ import {
   type FormDoc,
   type Question,
 } from "@/lib/form";
-import { readDemoAnswers, readDemoCompletedAt, readDemoPublished } from "@/lib/store";
 import { AdminsPanel } from "./AdminsPanel";
 import { FormWorkspace } from "./FormWorkspace";
+import { SettingsPanel } from "./SettingsPanel";
 
 export type Person = {
   id: string;
@@ -29,11 +29,12 @@ export type Person = {
   answers: Record<string, Answer>;
 };
 
-type Tab = "responses" | "questions" | "texts" | "admins";
+type Tab = "responses" | "questions" | "texts" | "settings" | "admins";
 const TABS: { id: Tab; label: string }[] = [
   { id: "responses", label: "Responses" },
   { id: "questions", label: "Questions" },
   { id: "texts", label: "Texts" },
+  { id: "settings", label: "Settings" },
   { id: "admins", label: "Admins" },
 ];
 
@@ -41,23 +42,19 @@ export function AdminDashboard({
   people: initial,
   form: initialForm,
   meId,
-  demo,
+  initialTab = "responses",
 }: {
   people: Person[];
   form: FormDoc;
   meId: string;
-  demo?: boolean;
+  initialTab?: string;
 }) {
-  const [people, setPeople] = useState(initial);
+  const people = initial;
   const [form, setForm] = useState(initialForm);
-  const [tab, setTab] = useState<Tab>("responses");
-
-  // Remember the tab in the URL (?tab=questions) so preview links can come back.
-  useEffect(() => {
-    const t = new URLSearchParams(location.search).get("tab");
-    if (t === "editor") setTab("questions");
-    else if (TABS.some((x) => x.id === t)) setTab(t as Tab);
-  }, []);
+  // The tab lives in the URL (?tab=questions) so preview links can come back to it.
+  const [tab, setTab] = useState<Tab>(() =>
+    initialTab === "editor" ? "questions" : TABS.some((x) => x.id === initialTab) ? (initialTab as Tab) : "responses"
+  );
   function choose(t: Tab) {
     setTab(t);
     const url = new URL(location.href);
@@ -65,20 +62,6 @@ export function AdminDashboard({
     history.replaceState(null, "", url);
   }
 
-  // Demo mode: this browser's answers and form.
-  useEffect(() => {
-    if (!demo) return;
-    setForm(readDemoPublished() ?? initialForm);
-    setPeople([
-      {
-        id: "demo",
-        name: "You (demo)",
-        answers: readDemoAnswers(),
-        completedAt: readDemoCompletedAt(),
-        lastActive: new Date().toISOString(),
-      },
-    ]);
-  }, [demo, initialForm]);
 
   return (
     <div className="min-h-dvh">
@@ -86,7 +69,6 @@ export function AdminDashboard({
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 pt-3 sm:px-6">
           <Logo href="/admin" />
           <span className="label rounded-full bg-lime px-2.5 py-1 text-[#161616]">Admin</span>
-          {demo && <span className="label hidden text-muted sm:inline">Demo mode</span>}
           <div className="ml-auto flex items-center gap-2.5 sm:gap-4">
             <Link href="/journey" className="label hidden text-muted hover:text-ink sm:inline">
               My README →
@@ -94,12 +76,12 @@ export function AdminDashboard({
             <ThemeToggle />
           </div>
         </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 sm:px-6" aria-label="Admin sections">
+        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto overflow-y-hidden px-4 sm:px-6" aria-label="Admin sections">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => choose(t.id)}
-              className={`label -mb-[1.5px] shrink-0 border-b-[3px] px-3 py-3 transition ${
+              className={`label shrink-0 border-b-[3px] px-3 pb-2.5 pt-3 transition ${
                 tab === t.id ? "border-edge text-ink" : "border-transparent text-muted hover:text-ink"
               }`}
             >
@@ -114,7 +96,8 @@ export function AdminDashboard({
         {(tab === "questions" || tab === "texts") && (
           <FormWorkspace mode={tab} published={form} onPublished={setForm} />
         )}
-        {tab === "admins" && <AdminsPanel meId={meId} demo={demo} />}
+        {tab === "settings" && <SettingsPanel />}
+        {tab === "admins" && <AdminsPanel meId={meId} />}
       </main>
     </div>
   );
@@ -251,7 +234,7 @@ function PersonDetail({ person, form, onBack }: { person: Person; form: FormDoc;
         </label>
       </div>
       <div className="grid gap-8 lg:grid-cols-[340px_1fr]">
-        <div className="lg:sticky lg:top-32 lg:h-fit">
+        <div className="lg:sticky lg:top-32 lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto lg:pb-4">
           <ReadmeCard form={form} name={person.name} avatarUrl={person.avatarUrl} answers={person.answers} />
         </div>
         <div className="space-y-10">
@@ -323,7 +306,7 @@ function ByQuestion({ people, form }: { people: Person[]; form: FormDoc }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-      <nav className="ink max-h-[70vh] space-y-4 overflow-y-auto rounded-3xl bg-panel p-3 lg:sticky lg:top-32">
+      <nav className="ink max-h-[60vh] space-y-4 overflow-y-auto overscroll-contain rounded-3xl bg-panel p-3 lg:sticky lg:top-32 lg:max-h-[calc(100dvh-9rem)]">
         {form.sections.map((s) => (
           <div key={s.id}>
             <p className="label px-2 pb-1">
@@ -442,7 +425,7 @@ function downloadCsv(people: Person[], form: FormDoc) {
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
   const qs = everyQuestion(form);
   const num = numberOf(form);
-  const header = ["Name", "Discord", "Completed", ...qs.map((q) => `${num(q)}. ${q.prompt}`)];
+  const header = ["Name", "Username", "Completed", ...qs.map((q) => `${num(q)}. ${q.prompt}`)];
   const rows = people.map((p) => [
     p.name,
     p.username ?? "",

@@ -262,7 +262,7 @@ function QuestionsEditor({ draft, change, publishedIds }: { draft: FormDoc; chan
   return (
     <div className="grid gap-8 lg:grid-cols-[300px_minmax(0,1fr)]">
       {/* Sections */}
-      <aside className="lg:sticky lg:top-32 lg:h-fit">
+      <aside className="lg:sticky lg:top-32 lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto lg:overscroll-contain lg:pb-4 lg:pr-1">
         <div className="mb-3 flex items-center justify-between">
           <p className="label">Sections</p>
           <label className="label flex items-center gap-1.5 text-muted">

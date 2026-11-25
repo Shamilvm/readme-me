@@ -1,11 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { DEMO_MODE, SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
+import { SUPABASE_ANON_KEY, SUPABASE_CONFIGURED, SUPABASE_URL } from "@/lib/config";
 
 const PROTECTED = ["/journey", "/admin"];
 
 export async function middleware(request: NextRequest) {
-  if (DEMO_MODE) return NextResponse.next();
+  // Without keys every page shows the "setup needed" screen, so there is nothing to protect yet.
+  if (!SUPABASE_CONFIGURED) return NextResponse.next();
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

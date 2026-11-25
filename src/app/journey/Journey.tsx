@@ -9,6 +9,7 @@ import { Logo } from "@/components/Logo";
 import { Mascot } from "@/components/Mascot";
 import { QuestionInput, type Reaction } from "@/components/QuestionInput";
 import { ReadmeCard } from "@/components/ReadmeCard";
+import { ProviderIcon } from "@/components/SignInOptions";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ToastStack, useToasts } from "@/components/Toasts";
 import {
@@ -38,7 +39,8 @@ import {
   type NumberedQuestion,
   type Section,
 } from "@/lib/form";
-import { demoReset, loadAnswers, markCompleted, readDemoDraft, readDemoPublished, saveAnswer, type Me } from "@/lib/store";
+import { loadAnswers, markCompleted, saveAnswer, type Me } from "@/lib/store";
+import type { SiteSettings } from "@/lib/settings";
 
 type Step =
   | { kind: "welcome" }
@@ -79,17 +81,16 @@ function isTyping(e: KeyboardEvent) {
 export function Journey({
   me,
   isAdmin,
-  demo,
-  form: initialForm,
+  form,
   preview,
+  settings,
 }: {
   me: Me;
   isAdmin: boolean;
-  demo?: boolean;
   form: FormDoc;
   preview?: boolean;
+  settings: SiteSettings;
 }) {
-  const [form, setForm] = useState<FormDoc>(initialForm);
   const sections = useMemo(() => liveSections(form), [form]);
   const all = useMemo(() => liveQuestions(form), [form]);
   const total = all.length;
@@ -114,12 +115,7 @@ export function Journey({
 
   // Load saved answers and resume where the person left off.
   useEffect(() => {
-    let f = initialForm;
-    if (demo) {
-      f = (preview ? readDemoDraft() ?? readDemoPublished() : readDemoPublished()) ?? initialForm;
-      setForm(f);
-    }
-    const stepCount = buildSteps(liveSections(f)).length;
+    const stepCount = buildSteps(liveSections(form)).length;
     loadAnswers(me.id)
       .then((a) => {
         setAnswers(a);
@@ -389,7 +385,7 @@ export function Journey({
             {currentCi >= 0 ? `Section ${pad(currentCi + 1)} · ${sections[currentCi].heading}` : step.kind === "finale" ? "Release" : "Intro"}
           </p>
           <div className="ml-auto flex items-center gap-2.5">
-            <SaveIndicator state={saveState} demo={demo} />
+            <SaveIndicator state={saveState} />
             <LevelPill xp={xp} />
             {isAdmin && (
               <Link href="/admin" className="ink ink-hover label hidden rounded-full px-3 py-1.5 sm:inline-block">
@@ -401,25 +397,9 @@ export function Journey({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={me.avatarUrl} alt={me.name} title={me.name} className="ink size-8 rounded-full" />
             ) : null}
-            {demo ? (
-              <button
-                onClick={() => {
-                  demoReset();
-                  try {
-                    localStorage.removeItem(posKey);
-                    localStorage.removeItem(badgeKey);
-                  } catch {}
-                  location.reload();
-                }}
-                className="label text-muted hover:text-pink"
-              >
-                Reset
-              </button>
-            ) : (
-              <form action="/auth/signout" method="post">
-                <button className="label text-muted hover:text-pink">Sign out</button>
-              </form>
-            )}
+            <form action="/auth/signout" method="post">
+              <button className="label text-muted hover:text-pink">Sign out</button>
+            </form>
           </div>
         </div>
         <div className="h-[3px] bg-line">
@@ -432,7 +412,7 @@ export function Journey({
       </header>
 
       <div className="mx-auto flex w-full max-w-6xl flex-1 gap-12 px-4 sm:px-6">
-        <aside className="sticky top-24 hidden h-fit w-56 shrink-0 py-10 lg:block">{sectionNav}</aside>
+        <aside className="sticky top-24 hidden max-h-[calc(100dvh-6rem)] w-56 shrink-0 overflow-y-auto overscroll-contain py-10 lg:block">{sectionNav}</aside>
 
         <main className="min-w-0 flex-1 pb-48 pt-10 sm:pt-16">
           <AnimatePresence mode="wait" custom={dir}>
@@ -482,6 +462,7 @@ export function Journey({
                   }}
                   go={go}
                   isAdmin={isAdmin}
+                  discordInvite={settings.discordInvite}
                 />
               )}
             </motion.div>
@@ -807,6 +788,7 @@ function Finale({
   firstOpen,
   go,
   isAdmin,
+  discordInvite,
 }: {
   me: Me;
   answers: Record<string, Answer>;
@@ -818,6 +800,7 @@ function Finale({
   firstOpen: () => number;
   go: (i: number) => void;
   isAdmin: boolean;
+  discordInvite?: string;
 }) {
   const { total, form } = useJourney();
   const open = firstOpen();
@@ -875,6 +858,24 @@ function Finale({
           );
         })}
       </div>
+
+      {discordInvite && (
+        <a
+          href={discordInvite}
+          target="_blank"
+          rel="noreferrer"
+          className="ink-hover mt-12 flex items-center gap-4 rounded-3xl bg-[#5865F2] p-5 text-white"
+        >
+          <span className="grid size-12 shrink-0 place-items-center rounded-full bg-white text-[#5865F2]">
+            <ProviderIcon id="discord" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="display block text-2xl uppercase">Join the Discord</span>
+            <span className="block text-sm opacity-85">Say hi to the team. This is where we hang out.</span>
+          </span>
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-lime font-bold text-[#161616]">→</span>
+        </a>
+      )}
 
       <p className="label mb-4 mt-12">A peek at your README</p>
       <ReadmeCard form={form} name={me.name} avatarUrl={me.avatarUrl} answers={answers} />
@@ -990,11 +991,11 @@ function Kbd({ children }: { children: React.ReactNode }) {
   return <span className="hidden text-xs text-muted sm:inline">{children}</span>;
 }
 
-function SaveIndicator({ state, demo }: { state: SaveState; demo?: boolean }) {
+function SaveIndicator({ state }: { state: SaveState }) {
   const map: Record<SaveState, [string, string]> = {
     idle: ["", ""],
     saving: ["Saving…", "text-muted"],
-    saved: [demo ? "Saved locally" : "Saved", "text-ok"],
+    saved: ["Saved", "text-ok"],
     error: ["Couldn't save, will retry", "text-pink"],
   };
   const [text, tone] = map[state];

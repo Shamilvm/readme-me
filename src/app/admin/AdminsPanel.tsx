@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { listPeopleWithRoles, setAdmin, type AdminRow } from "@/lib/store";
 
-export function AdminsPanel({ meId, demo }: { meId: string; demo?: boolean }) {
+export function AdminsPanel({ meId }: { meId: string }) {
   const [rows, setRows] = useState<AdminRow[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,16 +40,11 @@ export function AdminsPanel({ meId, demo }: { meId: string; demo?: boolean }) {
       <p className="mt-4 text-muted">
         Admins can read everyone&apos;s answers and edit the questions. People appear here after they sign in once.
       </p>
-      {demo && (
-        <p className="mt-4 rounded-2xl bg-panel-2 p-4 text-sm">
-          In demo mode there&apos;s no sign-in, so there&apos;s only you. Connect Supabase to manage admins.
-        </p>
-      )}
 
       <input
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
-        placeholder="Search by name or Discord username…"
+        placeholder="Search by name or username…"
         className="mt-8 w-full border-b-2 border-edge bg-transparent py-2 text-lg outline-none focus-visible:outline-none"
       />
       {error && <p className="mt-4 text-sm text-pink">{error}</p>}
@@ -74,7 +69,7 @@ export function AdminsPanel({ meId, demo }: { meId: string; demo?: boolean }) {
             </div>
             <button
               onClick={() => toggle(r)}
-              disabled={busy === r.id || r.id === meId || demo}
+              disabled={busy === r.id || r.id === meId}
               title={r.id === meId ? "You can't remove yourself" : undefined}
               className={`label ml-auto rounded-full px-4 py-2 transition disabled:cursor-not-allowed disabled:opacity-60 ${
                 r.isAdmin ? "bg-ink text-bg" : "ink hover:bg-accent-soft"

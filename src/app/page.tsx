@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { DEMO_MODE } from "@/lib/config";
+import { SUPABASE_CONFIGURED } from "@/lib/config";
 import { liveQuestions, liveSections } from "@/lib/form";
 import { getPublishedForm } from "@/lib/form-server";
+import { getSettings } from "@/lib/settings-server";
 import { createClient } from "@/lib/supabase/server";
 import { Doodle } from "@/components/Doodles";
-import { FormCounts } from "@/components/FormCounts";
-import { DiscordButton } from "@/components/DiscordButton";
+import { SetupRequired } from "@/components/SetupRequired";
+import { SignInOptions } from "@/components/SignInOptions";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -16,26 +17,21 @@ export default async function Home({
 }: {
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
+  if (!SUPABASE_CONFIGURED) return <SetupRequired />;
   const { next, error } = await searchParams;
-  let signedIn = false;
-  if (!DEMO_MODE) {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    signedIn = !!data.user;
-  }
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  const signedIn = !!data.user;
 
-  const form = await getPublishedForm();
+  const [form, settings] = await Promise.all([getPublishedForm(), getSettings()]);
   const questionCount = liveQuestions(form).length;
   const sectionCount = liveSections(form).length;
-
-  const cta = signedIn ? "Continue your README" : "Try the demo";
 
   return (
     <main className="flex min-h-dvh flex-col overflow-x-clip">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 sm:px-8">
         <Logo />
         <div className="flex items-center gap-3">
-          {DEMO_MODE && <span className="label rounded-full bg-lime px-3 py-1 text-[#161616]">Demo</span>}
           <ThemeToggle />
         </div>
       </header>
@@ -56,7 +52,9 @@ export default async function Home({
         <div className="label mt-6 grid grid-cols-3 items-start gap-4 text-[10px] sm:text-xs">
           <p>No right answers</p>
           <p className="text-center">
-            <FormCounts questions={questionCount} sections={sectionCount} demo={DEMO_MODE} />
+            {questionCount} questions
+            <br />
+            {sectionCount} short sections
           </p>
           <p className="text-right">Only the team lead reads it</p>
         </div>
@@ -64,16 +62,16 @@ export default async function Home({
           README<span className="mark-lime">.me</span>
         </h1>
         <div className="mt-10 flex flex-col items-center gap-3">
-          {signedIn || DEMO_MODE ? (
+          {signedIn ? (
             <Link
               href="/journey"
               className="ink-hover group inline-flex items-center gap-3 rounded-full bg-ink py-2.5 pl-7 pr-2.5 text-bg"
             >
-              <span className="label text-[13px]">{cta}</span>
+              <span className="label text-[13px]">Continue your README</span>
               <span className="grid size-10 place-items-center rounded-full bg-lime font-bold text-[#161616]">→</span>
             </Link>
           ) : (
-            <DiscordButton next={next ?? "/journey"} />
+            <SignInOptions providers={settings.signIn} next={next ?? "/journey"} />
           )}
           {error && <p className="text-sm text-pink">Sign-in didn&apos;t go through. Please try again.</p>}
         </div>

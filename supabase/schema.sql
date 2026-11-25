@@ -162,3 +162,48 @@ create policy "admins: admin add" on public.admins
 drop policy if exists "admins: admin remove others" on public.admins;
 create policy "admins: admin remove others" on public.admins
   for delete using (public.is_admin() and user_id <> auth.uid());
+
+-- ─────────────────────────────────────────────────────────────
+-- Site settings (sign-in methods, Discord invite…), edited from
+-- the admin Settings tab. Anyone can read them (the landing page
+-- needs to know which sign-in buttons to show); only admins write.
+-- ─────────────────────────────────────────────────────────────
+create table if not exists public.site_settings (
+  id          text primary key default 'main',
+  doc         jsonb not null,
+  updated_at  timestamptz not null default now()
+);
+
+alter table public.site_settings enable row level security;
+
+drop policy if exists "site_settings: read all" on public.site_settings;
+create policy "site_settings: read all" on public.site_settings
+  for select using (true);
+
+drop policy if exists "site_settings: admin write" on public.site_settings;
+create policy "site_settings: admin write" on public.site_settings
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- Profiles for any sign-in method (Discord, GitHub, Google or email link).
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  m jsonb := coalesce(new.raw_user_meta_data, '{}'::jsonb);
+  email_name text := split_part(coalesce(new.email, ''), '@', 1);
+begin
+  insert into public.profiles (id, discord_id, username, display_name, avatar_url)
+  values (
+    new.id,
+    case when new.raw_app_meta_data ->> 'provider' = 'discord' then m ->> 'provider_id' end,
+    coalesce(m ->> 'user_name', m ->> 'preferred_username', m ->> 'name', nullif(email_name, '')),
+    coalesce(m -> 'custom_claims' ->> 'global_name', m ->> 'full_name', m ->> 'name', nullif(email_name, '')),
+    coalesce(m ->> 'avatar_url', m ->> 'picture')
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;

@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { DEMO_MODE } from "@/lib/config";
+import { SUPABASE_CONFIGURED } from "@/lib/config";
+import { SetupRequired } from "@/components/SetupRequired";
 import type { Answer } from "@/lib/form";
 import { getPublishedForm } from "@/lib/form-server";
-import { DEFAULT_FORM } from "@/templates";
 import { createClient } from "@/lib/supabase/server";
 import { AdminDashboard, type Person } from "./AdminDashboard";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
-  if (DEMO_MODE) return <AdminDashboard people={[]} form={DEFAULT_FORM} meId="demo" demo />;
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const { tab } = await searchParams;
+  if (!SUPABASE_CONFIGURED) return <SetupRequired />;
 
   const supabase = await createClient();
   const {
@@ -64,5 +65,5 @@ export default async function AdminPage() {
   });
 
   const form = await getPublishedForm();
-  return <AdminDashboard people={people} form={form} meId={user.id} />;
+  return <AdminDashboard people={people} form={form} meId={user.id} initialTab={tab} />;
 }
