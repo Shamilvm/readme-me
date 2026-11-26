@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SUPABASE_CONFIGURED } from "@/lib/config";
+import { ErrorScreen, PrimaryAction, secondaryActionClass } from "@/components/ErrorScreen";
 import { SetupRequired } from "@/components/SetupRequired";
 import type { Answer } from "@/lib/form";
 import { getPublishedForm } from "@/lib/form-server";
@@ -22,15 +23,26 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const { data: isAdmin } = await supabase.rpc("is_admin");
   if (!isAdmin) {
     return (
-      <main className="grid min-h-dvh place-items-center p-6 text-center">
-        <div>
-          <p className="display text-7xl">403</p>
-          <p className="mt-4 text-lg">This page is only for the team lead.</p>
-          <Link href="/journey" className="label mt-6 inline-block underline underline-offset-4">
-            ← back to your README
-          </Link>
-        </div>
-      </main>
+      <ErrorScreen
+        code="403"
+        zeros={[{ name: "cat" }]}
+        eyebrow="Team lead only"
+        title={
+          <>
+            Not your <span className="mark-lime">door.</span>
+          </>
+        }
+        body="The dashboard shows everyone's answers, so only the team lead can open it. Your own README is right this way."
+        terminal={{ cmd: "open /admin", out: "Permission denied: dashboard is for admins only" }}
+        actions={
+          <>
+            <PrimaryAction href="/journey">Back to my README</PrimaryAction>
+            <Link href="/" className={secondaryActionClass}>
+              Home
+            </Link>
+          </>
+        }
+      />
     );
   }
 
