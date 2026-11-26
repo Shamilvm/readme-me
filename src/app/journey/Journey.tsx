@@ -39,7 +39,7 @@ import {
   type NumberedQuestion,
   type Section,
 } from "@/lib/form";
-import { loadAnswers, markCompleted, saveAnswer, type Me } from "@/lib/store";
+import { loadAnswers, saveAnswer, submitReadme, type Me } from "@/lib/store";
 import type { SiteSettings } from "@/lib/settings";
 
 type Step =
@@ -84,12 +84,14 @@ export function Journey({
   form,
   preview,
   settings,
+  submittedAt,
 }: {
   me: Me;
   isAdmin: boolean;
   form: FormDoc;
   preview?: boolean;
   settings: SiteSettings;
+  submittedAt?: string | null;
 }) {
   const sections = useMemo(() => liveSections(form), [form]);
   const all = useMemo(() => liveQuestions(form), [form]);
@@ -104,6 +106,9 @@ export function Journey({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [navOpen, setNavOpen] = useState(false);
   const [bit, setBit] = useState<{ mood: Mood; line: string | null }>({ mood: "happy", line: null });
+  // Once submitted, answers are read-only (the database enforces this too).
+  const [submitted, setSubmitted] = useState<string | null>(submittedAt ?? null);
+  const locked = !!submitted && !preview;
   const { toasts, push } = useToasts();
   const pending = useRef(new Map<string, Answer>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,13 +183,14 @@ export function Journey({
 
   const update = useCallback(
     (qid: string, a: Answer) => {
+      if (locked) return;
       setAnswers((prev) => ({ ...prev, [qid]: a }));
       pending.current.set(qid, a);
       setSaveState("saving");
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(flush, 700);
     },
-    [flush]
+    [flush, locked]
   );
 
   /* ── Navigation ─────────────────────────────────────── */
@@ -223,14 +229,14 @@ export function Journey({
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setNavOpen(false);
-      if (e.key === "Enter" && !isTyping(e) && step.kind !== "finale" && !navOpen) {
+      if (e.key === "Enter" && !isTyping(e) && step.kind !== "finale" && !navOpen && !locked) {
         e.preventDefault();
         next();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [next, step.kind, navOpen]);
+  }, [next, step.kind, navOpen, locked]);
 
   /* ── Bit's reactions ────────────────────────────────── */
 
@@ -329,13 +335,19 @@ export function Journey({
 
   /* ── The end ────────────────────────────────────────── */
 
-  const allDone = all.every((q) => isDone(answers[q.id]));
   useEffect(() => {
-    if (step.kind === "finale" && allDone) markCompleted(me.id).catch(() => {});
-  }, [step.kind, allDone, me.id]);
-  useEffect(() => {
-    if (step.kind === "finale") bigCelebration();
-  }, [step.kind]);
+    if (step.kind === "finale" && !locked) bigCelebration();
+  }, [step.kind, locked]);
+
+  const submit = useCallback(async () => {
+    await flush();
+    if (pending.current.size) throw new Error("Some answers haven't saved yet. Please try again.");
+    const at = await submitReadme();
+    setSubmitted(at);
+    window.scrollTo({ top: 0 });
+    bigCelebration();
+    say("Shipped! v1.0 is out 🚀", "love");
+  }, [flush, say]);
 
   const doneCount = useMemo(() => all.filter((q) => isDone(answers[q.id])).length, [answers, all]);
   const answeredCount = useMemo(() => all.filter((q) => hasContent(answers[q.id])).length, [answers, all]);
@@ -411,6 +423,21 @@ export function Journey({
         </div>
       </header>
 
+      {locked ? (
+        <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-48 pt-10 sm:px-6 sm:pt-16">
+          <Submitted
+            me={me}
+            answers={answers}
+            submittedAt={submitted!}
+            answered={answeredCount}
+            skipped={doneCount - answeredCount}
+            xp={xp}
+            isAdmin={isAdmin}
+            discordInvite={settings.discordInvite}
+          />
+        </main>
+      ) : (
+      <>
       <div className="mx-auto flex w-full max-w-6xl flex-1 gap-12 px-4 sm:px-6">
         <aside className="sticky top-24 hidden max-h-[calc(100dvh-6rem)] w-56 shrink-0 overflow-y-auto overscroll-contain py-10 lg:block">{sectionNav}</aside>
 
@@ -463,6 +490,8 @@ export function Journey({
                   go={go}
                   isAdmin={isAdmin}
                   discordInvite={settings.discordInvite}
+                  onSubmit={submit}
+                  canSubmit={!preview}
                 />
               )}
             </motion.div>
@@ -472,9 +501,11 @@ export function Journey({
 
       {/* Round progress button (opens the section list) */}
       <ProgressOrb pct={pct} onClick={() => setNavOpen(true)} />
+      </>
+      )}
 
       <AnimatePresence>
-        {navOpen && (
+        {navOpen && !locked && (
           <motion.div
             className="fixed inset-0 z-40 flex items-end bg-ink/30 p-3 sm:items-center sm:justify-center"
             initial={{ opacity: 0 }}
@@ -789,6 +820,8 @@ function Finale({
   go,
   isAdmin,
   discordInvite,
+  onSubmit,
+  canSubmit,
 }: {
   me: Me;
   answers: Record<string, Answer>;
@@ -801,6 +834,8 @@ function Finale({
   go: (i: number) => void;
   isAdmin: boolean;
   discordInvite?: string;
+  onSubmit: () => Promise<void>;
+  canSubmit: boolean;
 }) {
   const { total, form } = useJourney();
   const open = firstOpen();
@@ -810,7 +845,7 @@ function Finale({
       <div className="flex items-end justify-between gap-4">
         <div>
           <p className="label text-muted">
-            {open < 0 ? "v1.0 released" : `Draft · ${total - answered - skipped} questions still open`}
+            {open < 0 ? "v1.0 ready to release" : `Draft · ${total - answered - skipped} questions still open`}
           </p>
           <h1 className="display mt-4 text-[64px] uppercase sm:text-[104px]">
             That&apos;s
@@ -880,6 +915,8 @@ function Finale({
       <p className="label mb-4 mt-12">A peek at your README</p>
       <ReadmeCard form={form} name={me.name} avatarUrl={me.avatarUrl} answers={answers} />
 
+      {canSubmit && <SubmitPanel openCount={open >= 0 ? total - answered - skipped : 0} onSubmit={onSubmit} />}
+
       <div className="mt-10 flex flex-wrap items-center gap-3">
         {open >= 0 && <PrimaryButton onClick={() => go(open)}>Answer what&apos;s left</PrimaryButton>}
         <SecondaryButton onClick={onEdit}>Review my answers</SecondaryButton>
@@ -889,7 +926,174 @@ function Finale({
           </Link>
         )}
       </div>
-      <p className="mt-6 text-sm text-muted">You can come back and change anything, anytime.</p>
+      <p className="mt-6 text-sm text-muted">Until you submit, you can come back and change anything.</p>
+    </div>
+  );
+}
+
+/** The "ship it" box at the end: submit once, then answers are locked. */
+function SubmitPanel({ openCount, onSubmit }: { openCount: number; onSubmit: () => Promise<void> }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const blocked = openCount > 0;
+
+  async function go() {
+    setBusy(true);
+    setError(null);
+    try {
+      await onSubmit();
+    } catch (e) {
+      setError((e as Error)?.message || "Couldn't submit. Please try again.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-12 rounded-3xl bg-ink p-6 text-bg sm:p-8">
+      <p className="label text-lime">Final step</p>
+      <p className="display mt-2 text-4xl uppercase sm:text-5xl">Ship v1.0</p>
+      {blocked ? (
+        <p className="mt-3 max-w-lg leading-relaxed opacity-80">
+          {openCount} {openCount === 1 ? "question is" : "questions are"} still open. Answer or skip{" "}
+          {openCount === 1 ? "it" : "them"} first, then you can submit.
+        </p>
+      ) : confirming ? (
+        <p className="mt-3 max-w-lg leading-relaxed">
+          <span className="font-bold text-lime">Submit for good?</span> After this your answers are locked and you
+          can only preview them. If you need to change something later, ask the team lead to reopen it.
+        </p>
+      ) : (
+        <p className="mt-3 max-w-lg leading-relaxed opacity-80">
+          Happy with everything? Submit your README to the team lead. After that it&apos;s read-only.
+        </p>
+      )}
+
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        {confirming && !blocked ? (
+          <>
+            <button
+              onClick={go}
+              disabled={busy}
+              className="ink-hover inline-flex items-center gap-3 rounded-full bg-lime py-2 pl-6 pr-2 text-[#161616] disabled:opacity-60"
+            >
+              <span className="label text-[13px]">{busy ? "Submitting…" : "Yes, submit"}</span>
+              <span className="grid size-9 place-items-center rounded-full bg-[#161616] font-bold text-lime">✓</span>
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+              className="label rounded-full border-[1.5px] border-bg px-6 py-3.5 text-[13px] disabled:opacity-60"
+            >
+              Not yet
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => setConfirming(true)}
+            disabled={blocked}
+            className="ink-hover inline-flex items-center gap-3 rounded-full bg-lime py-2 pl-6 pr-2 text-[#161616] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <span className="label text-[13px]">Submit my README</span>
+            <span className="grid size-9 place-items-center rounded-full bg-[#161616] font-bold text-lime">→</span>
+          </button>
+        )}
+      </div>
+      {error && <p className="mt-4 text-sm font-semibold text-pink">{error}</p>}
+    </div>
+  );
+}
+
+/** What a member sees after submitting: a read-only preview. */
+function Submitted({
+  me,
+  answers,
+  submittedAt,
+  answered,
+  skipped,
+  xp,
+  isAdmin,
+  discordInvite,
+}: {
+  me: Me;
+  answers: Record<string, Answer>;
+  submittedAt: string;
+  answered: number;
+  skipped: number;
+  xp: number;
+  isAdmin: boolean;
+  discordInvite?: string;
+}) {
+  const { form } = useJourney();
+  const level = levelFor(xp);
+  const when = new Date(submittedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return (
+    <div>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <p className="label inline-flex items-center gap-2 text-muted">
+            <span className="grid size-5 place-items-center rounded-full bg-lime text-[10px] text-[#161616]">✓</span>
+            v1.0 · Submitted {when}
+          </p>
+          <h1 className="display mt-4 text-[64px] uppercase sm:text-[104px]">
+            <span className="mark-lime">Shipped.</span>
+          </h1>
+        </div>
+        <div className="bob shrink-0">
+          <Doodle name="rocket" size={150} />
+        </div>
+      </div>
+      <p className="mt-8 max-w-xl text-lg leading-relaxed">
+        Your README is with the team lead. It&apos;s locked now, so you can read it but not change it.
+      </p>
+
+      <div className="mt-10 grid grid-cols-2 border-y-[1.5px] border-edge sm:grid-cols-4">
+        <Stat label="Answered" value={answered} />
+        <Stat label="Skipped" value={skipped} />
+        <Stat label="XP" value={xp} />
+        <Stat label="Level" value={level.title} small />
+      </div>
+
+      {discordInvite && (
+        <a
+          href={discordInvite}
+          target="_blank"
+          rel="noreferrer"
+          className="ink-hover mt-12 flex items-center gap-4 rounded-3xl bg-[#5865F2] p-5 text-white"
+        >
+          <span className="grid size-12 shrink-0 place-items-center rounded-full bg-white text-[#5865F2]">
+            <ProviderIcon id="discord" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="display block text-2xl uppercase">Join the Discord</span>
+            <span className="block text-sm opacity-85">Say hi to the team. This is where we hang out.</span>
+          </span>
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-lime font-bold text-[#161616]">→</span>
+        </a>
+      )}
+
+      <p className="label mb-4 mt-12">Your README · read-only</p>
+      <ReadmeCard form={form} name={me.name} avatarUrl={me.avatarUrl} answers={answers} />
+
+      <div className="ink mt-10 flex items-start gap-4 rounded-3xl bg-panel p-5">
+        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-ink text-lg text-bg" aria-hidden>
+          🔒
+        </span>
+        <div>
+          <p className="font-semibold">Need to change something?</p>
+          <p className="mt-1 text-sm leading-relaxed text-muted">
+            Ask the team lead to reopen your README. Once they do, you can edit and submit again.
+          </p>
+        </div>
+      </div>
+
+      {isAdmin && (
+        <div className="mt-8">
+          <Link href="/admin" className="ink ink-hover label inline-block rounded-full px-5 py-3.5">
+            Open dashboard
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

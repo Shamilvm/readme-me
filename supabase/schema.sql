@@ -207,3 +207,68 @@ begin
   return new;
 end;
 $$;
+
+-- ─────────────────────────────────────────────────────────────
+-- Final submission. Once a member submits, their answers are
+-- locked: they can only preview them. An admin can reopen a
+-- README so that person can edit again (and re-submit).
+-- ─────────────────────────────────────────────────────────────
+alter table public.profiles add column if not exists submitted_at timestamptz;
+
+-- Members may only touch their own harmless profile fields. submitted_at
+-- changes go through the two functions below, so nobody can unlock themselves.
+revoke update on public.profiles from anon, authenticated;
+grant update (last_seen_at, display_name, username, avatar_url) on public.profiles to authenticated;
+
+create or replace function public.is_submitted(uid uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.profiles where id = uid and submitted_at is not null);
+$$;
+
+create or replace function public.submit_readme()
+returns timestamptz
+language sql
+security definer
+set search_path = public
+as $$
+  update public.profiles
+     set submitted_at = coalesce(submitted_at, now()),
+         completed_at = coalesce(completed_at, now())
+   where id = auth.uid()
+  returning submitted_at;
+$$;
+
+create or replace function public.reopen_readme(target uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can reopen a README';
+  end if;
+  update public.profiles set submitted_at = null where id = target;
+end;
+$$;
+
+revoke execute on function public.submit_readme() from anon;
+revoke execute on function public.reopen_readme(uuid) from anon;
+
+drop policy if exists "responses: insert own" on public.responses;
+create policy "responses: insert own" on public.responses
+  for insert with check (user_id = auth.uid() and not public.is_submitted(auth.uid()));
+
+drop policy if exists "responses: update own" on public.responses;
+create policy "responses: update own" on public.responses
+  for update using (user_id = auth.uid() and not public.is_submitted(auth.uid()))
+  with check (user_id = auth.uid() and not public.is_submitted(auth.uid()));
+
+drop policy if exists "responses: delete own" on public.responses;
+create policy "responses: delete own" on public.responses
+  for delete using (user_id = auth.uid() and not public.is_submitted(auth.uid()));
