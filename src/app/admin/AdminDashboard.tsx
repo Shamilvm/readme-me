@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { reopenReadme } from "@/lib/store";
 import { Logo } from "@/components/Logo";
 import { ReadmeCard } from "@/components/ReadmeCard";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -49,7 +50,7 @@ export function AdminDashboard({
   meId: string;
   initialTab?: string;
 }) {
-  const people = initial;
+  const [people, setPeople] = useState(initial);
   const [form, setForm] = useState(initialForm);
   // The tab lives in the URL (?tab=questions) so preview links can come back to it.
   const [tab, setTab] = useState<Tab>(() =>
@@ -92,7 +93,13 @@ export function AdminDashboard({
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        {tab === "responses" && <Responses people={people} form={form} />}
+        {tab === "responses" && (
+          <Responses
+            people={people}
+            form={form}
+            onReopened={(id) => setPeople((ps) => ps.map((p) => (p.id === id ? { ...p, completedAt: null } : p)))}
+          />
+        )}
         {(tab === "questions" || tab === "texts") && (
           <FormWorkspace mode={tab} published={form} onPublished={setForm} />
         )}
@@ -105,7 +112,15 @@ export function AdminDashboard({
 
 /* ───────────────────────── Responses ───────────────────────── */
 
-function Responses({ people, form }: { people: Person[]; form: FormDoc }) {
+function Responses({
+  people,
+  form,
+  onReopened,
+}: {
+  people: Person[];
+  form: FormDoc;
+  onReopened: (id: string) => void;
+}) {
   const [view, setView] = useState<"people" | "questions">("people");
   const [selected, setSelected] = useState<string | null>(null);
   const live = useMemo(() => liveQuestions(form), [form]);
@@ -129,7 +144,7 @@ function Responses({ people, form }: { people: Person[]; form: FormDoc }) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Members signed in" value={stats.members} />
         <Stat label="Started" value={stats.started} />
-        <Stat label="Completed" value={stats.completed} />
+        <Stat label="Submitted" value={stats.completed} />
         <Stat label="Avg progress" value={`${stats.avg}%`} />
       </div>
 
@@ -160,7 +175,7 @@ function Responses({ people, form }: { people: Person[]; form: FormDoc }) {
           <Empty />
         ) : view === "people" ? (
           person ? (
-            <PersonDetail person={person} form={form} onBack={() => setSelected(null)} />
+            <PersonDetail person={person} form={form} onBack={() => setSelected(null)} onReopened={onReopened} />
           ) : (
             <PeopleGrid people={people} form={form} onOpen={setSelected} />
           )
@@ -194,7 +209,7 @@ function PeopleGrid({ people, form, onOpen }: { people: Person[]; form: FormDoc;
                   p.completedAt ? "bg-lime text-[#161616]" : "ink text-muted"
                 }`}
               >
-                {p.completedAt ? "v1.0" : "Draft"}
+                {p.completedAt ? "Submitted" : "Draft"}
               </span>
             </div>
             <div className="mt-4 h-[3px] overflow-hidden rounded-full bg-line">
@@ -219,7 +234,17 @@ function numberOf(form: FormDoc) {
   return (q: Question) => (map.has(q.id) ? `Q${map.get(q.id)}` : "Archived");
 }
 
-function PersonDetail({ person, form, onBack }: { person: Person; form: FormDoc; onBack: () => void }) {
+function PersonDetail({
+  person,
+  form,
+  onBack,
+  onReopened,
+}: {
+  person: Person;
+  form: FormDoc;
+  onBack: () => void;
+  onReopened: (id: string) => void;
+}) {
   const [hideEmpty, setHideEmpty] = useState(false);
   const num = numberOf(form);
   return (
@@ -228,6 +253,7 @@ function PersonDetail({ person, form, onBack }: { person: Person; form: FormDoc;
         <button onClick={onBack} className="label text-muted hover:text-ink">
           ← All people
         </button>
+        <SubmissionControl person={person} onReopened={onReopened} />
         <label className="label ml-auto flex items-center gap-2 text-muted">
           <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
           Hide unanswered
@@ -272,6 +298,51 @@ function PersonDetail({ person, form, onBack }: { person: Person; form: FormDoc;
         </div>
       </div>
     </div>
+  );
+}
+
+/** Shows whether this person has submitted, and lets an admin reopen it for edits. */
+function SubmissionControl({ person, onReopened }: { person: Person; onReopened: (id: string) => void }) {
+  const [state, setState] = useState<"idle" | "confirm" | "busy" | "error">("idle");
+  if (!person.completedAt)
+    return <span className="label ink rounded-full px-3 py-1.5 text-muted">Draft · can edit</span>;
+  const when = new Date(person.completedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+
+  async function reopen() {
+    setState("busy");
+    try {
+      await reopenReadme(person.id);
+      onReopened(person.id);
+      setState("idle");
+    } catch {
+      setState("error");
+    }
+  }
+
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <span className="label rounded-full bg-lime px-3 py-1.5 text-[#161616]">🔒 Submitted {when}</span>
+      {state === "confirm" || state === "busy" ? (
+        <>
+          <span className="text-sm text-muted">Let {person.name} edit again?</span>
+          <button
+            onClick={reopen}
+            disabled={state === "busy"}
+            className="label rounded-full bg-ink px-3 py-1.5 text-bg disabled:opacity-60"
+          >
+            {state === "busy" ? "Reopening…" : "Yes, allow edits"}
+          </button>
+          <button onClick={() => setState("idle")} className="label text-muted hover:text-ink">
+            Cancel
+          </button>
+        </>
+      ) : (
+        <button onClick={() => setState("confirm")} className="ink ink-hover label rounded-full px-3 py-1.5 hover:bg-accent-soft">
+          Allow edits
+        </button>
+      )}
+      {state === "error" && <span className="text-sm text-pink">Couldn&apos;t reopen. Try again.</span>}
+    </span>
   );
 }
 
@@ -425,7 +496,7 @@ function downloadCsv(people: Person[], form: FormDoc) {
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
   const qs = everyQuestion(form);
   const num = numberOf(form);
-  const header = ["Name", "Username", "Completed", ...qs.map((q) => `${num(q)}. ${q.prompt}`)];
+  const header = ["Name", "Username", "Submitted", ...qs.map((q) => `${num(q)}. ${q.prompt}`)];
   const rows = people.map((p) => [
     p.name,
     p.username ?? "",

@@ -21,7 +21,7 @@ export default async function JourneyPage({ searchParams }: { searchParams: Prom
   if (!user) redirect("/");
 
   const [{ data: profile }, { data: isAdmin }] = await Promise.all([
-    supabase.from("profiles").select("display_name, username, avatar_url").eq("id", user.id).single(),
+    supabase.from("profiles").select("display_name, username, avatar_url, submitted_at").eq("id", user.id).single(),
     supabase.rpc("is_admin"),
   ]);
   await supabase.from("profiles").update({ last_seen_at: new Date().toISOString() }).eq("id", user.id);
@@ -39,6 +39,7 @@ export default async function JourneyPage({ searchParams }: { searchParams: Prom
       form={form}
       settings={settings}
       preview={showDraft}
+      submittedAt={profile?.submitted_at ?? null}
     />
   );
 }

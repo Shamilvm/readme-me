@@ -28,9 +28,19 @@ export async function saveAnswer(userId: string, questionId: string, value: Answ
   if (error) throw error;
 }
 
-export async function markCompleted(userId: string): Promise<void> {
+/** Final submission: locks the member's answers (enforced by the database). */
+export async function submitReadme(): Promise<string> {
   const supabase = createClient();
-  await supabase.from("profiles").update({ completed_at: new Date().toISOString() }).eq("id", userId);
+  const { data, error } = await supabase.rpc("submit_readme");
+  if (error) throw error;
+  return (data as string | null) ?? new Date().toISOString();
+}
+
+/** Admin only: unlock someone's submitted README so they can edit again. */
+export async function reopenReadme(userId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("reopen_readme", { target: userId });
+  if (error) throw error;
 }
 
 /* ── Forms (draft / published) ────────────────────────── */

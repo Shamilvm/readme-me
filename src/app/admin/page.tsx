@@ -48,7 +48,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, username, display_name, avatar_url, created_at, last_seen_at, completed_at")
+    .select("id, username, display_name, avatar_url, created_at, last_seen_at, submitted_at")
     .order("created_at");
 
   // Supabase returns at most 1000 rows per request, so page through responses.
@@ -70,7 +70,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       name: p.display_name ?? p.username ?? "Unnamed",
       username: p.username,
       avatarUrl: p.avatar_url,
-      completedAt: p.completed_at,
+      completedAt: p.submitted_at,
       lastActive: mine.reduce((max, r) => (r.updated_at > max ? r.updated_at : max), p.last_seen_at ?? p.created_at),
       answers: Object.fromEntries(mine.map((r) => [r.question_id, r.value])),
     };
