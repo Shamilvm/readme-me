@@ -1,103 +1,86 @@
-import Image from "next/image";
+import Link from "next/link";
+import { SUPABASE_CONFIGURED } from "@/lib/config";
+import { liveQuestions, liveSections } from "@/lib/form";
+import { getPublishedForm } from "@/lib/form-server";
+import { getSettings } from "@/lib/settings-server";
+import { createClient } from "@/lib/supabase/server";
+import { Doodle } from "@/components/Doodles";
+import { SetupRequired } from "@/components/SetupRequired";
+import { SignInOptions } from "@/components/SignInOptions";
+import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
-export default function Home() {
+const HERO_CAST = ["mug", "rocket", "laptop", "duck", "telescope", "cat"] as const;
+
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string; error?: string }>;
+}) {
+  if (!SUPABASE_CONFIGURED) return <SetupRequired />;
+  const { next, error } = await searchParams;
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  const signedIn = !!data.user;
+
+  const [form, settings] = await Promise.all([getPublishedForm(), getSettings()]);
+  const questionCount = liveQuestions(form).length;
+  const sectionCount = liveSections(form).length;
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <main className="flex min-h-dvh flex-col overflow-x-clip">
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 sm:px-8">
+        <Logo />
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+      </header>
+
+      {/* Hero */}
+      <section className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center px-4 py-8 sm:px-8">
+        <div className="flex items-end justify-between gap-2">
+          {HERO_CAST.map((d, i) => (
+            <div
+              key={d}
+              className={`bob ${i > 3 ? "hidden sm:block" : ""}`}
+              style={{ animationDelay: `${i * 0.35}s`, ["--r" as string]: `${i % 2 ? 3 : -3}deg` }}
+            >
+              <Doodle name={d} size={120} className="wiggle h-auto w-[72px] sm:w-[110px] lg:w-[140px]" />
+            </div>
+          ))}
+        </div>
+        <div className="label mt-6 grid grid-cols-3 items-start gap-4 text-[10px] sm:text-xs">
+          <p>No right answers</p>
+          <p className="text-center">
+            {questionCount} questions
+            <br />
+            {sectionCount} short sections
+          </p>
+          <p className="text-right">Only the team lead reads it</p>
+        </div>
+        <h1 className="display mt-4 whitespace-nowrap text-center text-[15vw] uppercase leading-[0.85] xl:text-[172px]">
+          README<span className="mark-lime">.me</span>
+        </h1>
+        <div className="mt-10 flex flex-col items-center gap-3">
+          {signedIn ? (
+            <Link
+              href="/journey"
+              className="ink-hover group inline-flex items-center gap-3 rounded-full bg-ink py-2.5 pl-7 pr-2.5 text-bg"
+            >
+              <span className="label text-[13px]">Continue your README</span>
+              <span className="grid size-10 place-items-center rounded-full bg-lime font-bold text-[#161616]">→</span>
+            </Link>
+          ) : (
+            <SignInOptions providers={settings.signIn} next={next ?? "/journey"} />
+          )}
+          {error && <p className="text-sm text-pink">Sign-in didn&apos;t go through. Please try again.</p>}
+        </div>
+      </section>
+
+      <footer className="mx-auto flex w-full max-w-6xl items-center justify-between border-t-[1.5px] border-edge px-4 py-6 sm:px-8">
+        <Logo />
+        <p className="label text-muted">Made with ❤ for the team</p>
       </footer>
-    </div>
+    </main>
   );
 }
