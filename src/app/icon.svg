@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="4 0 112 112">
+  <!-- Bit, the README.me robot mascot (static version of the "bit" doodle in src/components/Doodles.tsx) -->
+  <g stroke="#161616" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M60 22V10" fill="none"/>
+    <circle cx="60" cy="8" r="6" fill="#c8f04a"/>
+    <rect x="10" y="48" width="10" height="20" rx="4" fill="#efeee9"/>
+    <rect x="100" y="48" width="10" height="20" rx="4" fill="#efeee9"/>
+    <path d="M42 88h36v14a8 8 0 0 1-8 8H50a8 8 0 0 1-8-8Z" fill="#efeee9"/>
+    <rect x="18" y="22" width="84" height="68" rx="24" fill="#efeee9"/>
+    <circle cx="44" cy="52" r="11" fill="#fff"/>
+    <circle cx="76" cy="52" r="11" fill="#fff"/>
+    <path d="M51 72q9 7 18 0" fill="none"/>
+  </g>
+  <circle cx="45" cy="53" r="5.5" fill="#161616"/>
+  <circle cx="77" cy="53" r="5.5" fill="#161616"/>
+  <circle cx="46.8" cy="51" r="1.6" fill="#fff"/>
+  <circle cx="78.8" cy="51" r="1.6" fill="#fff"/>
+</svg>
