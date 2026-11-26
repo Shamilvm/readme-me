@@ -10,7 +10,14 @@ import { SignInOptions } from "@/components/SignInOptions";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-const HERO_CAST = ["mug", "rocket", "laptop", "duck", "telescope", "cat"] as const;
+const HERO_CAST = [
+  "mug",
+  "rocket",
+  "laptop",
+  "duck",
+  "telescope",
+  "cat",
+] as const;
 
 export default async function Home({
   searchParams,
@@ -23,7 +30,10 @@ export default async function Home({
   const { data } = await supabase.auth.getUser();
   const signedIn = !!data.user;
 
-  const [form, settings] = await Promise.all([getPublishedForm(), getSettings()]);
+  const [form, settings] = await Promise.all([
+    getPublishedForm(),
+    getSettings(),
+  ]);
   const questionCount = liveQuestions(form).length;
   const sectionCount = liveSections(form).length;
 
@@ -43,9 +53,16 @@ export default async function Home({
             <div
               key={d}
               className={`bob ${i > 3 ? "hidden sm:block" : ""}`}
-              style={{ animationDelay: `${i * 0.35}s`, ["--r" as string]: `${i % 2 ? 3 : -3}deg` }}
+              style={{
+                animationDelay: `${i * 0.35}s`,
+                ["--r" as string]: `${i % 2 ? 3 : -3}deg`,
+              }}
             >
-              <Doodle name={d} size={120} className="wiggle h-auto w-[72px] sm:w-[110px] lg:w-[140px]" />
+              <Doodle
+                name={d}
+                size={120}
+                className="wiggle h-auto w-[72px] sm:w-[110px] lg:w-[140px]"
+              />
             </div>
           ))}
         </div>
@@ -68,18 +85,37 @@ export default async function Home({
               className="ink-hover group inline-flex items-center gap-3 rounded-full bg-ink py-2.5 pl-7 pr-2.5 text-bg"
             >
               <span className="label text-[13px]">Continue your README</span>
-              <span className="grid size-10 place-items-center rounded-full bg-lime font-bold text-[#161616]">→</span>
+              <span className="grid size-10 place-items-center rounded-full bg-lime font-bold text-[#161616]">
+                →
+              </span>
             </Link>
           ) : (
-            <SignInOptions providers={settings.signIn} next={next ?? "/journey"} />
+            <SignInOptions
+              providers={settings.signIn}
+              next={next ?? "/journey"}
+            />
           )}
-          {error && <p className="text-sm text-pink">Sign-in didn&apos;t go through. Please try again.</p>}
+          {error && (
+            <p className="text-sm text-pink">
+              Sign-in didn&apos;t go through. Please try again.
+            </p>
+          )}
         </div>
       </section>
 
       <footer className="mx-auto flex w-full max-w-6xl items-center justify-between border-t-[1.5px] border-edge px-4 py-6 sm:px-8">
         <Logo />
-        <p className="label text-muted">Made with ❤ for the team</p>
+        <p className="label text-muted">
+          Made by{" "}
+          <a
+            href="https://www.shamilvm.com"
+            target="_blank"
+            className="text-orange-500 hover:underline"
+          >
+            shamilvm com
+          </a>{" "}
+          for the team
+        </p>
       </footer>
     </main>
   );
