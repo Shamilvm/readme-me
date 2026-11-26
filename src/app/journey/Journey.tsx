@@ -30,6 +30,7 @@ import {
 } from "@/lib/fun";
 import { bigCelebration, smallPop } from "@/lib/fx";
 import {
+  formatAnswer,
   hasContent,
   isDone,
   liveQuestions,
@@ -46,6 +47,7 @@ type Step =
   | { kind: "welcome" }
   | { kind: "chapter"; ci: number }
   | { kind: "question"; ci: number; qi: number }
+  | { kind: "review" }
   | { kind: "finale" };
 
 function buildSteps(sections: Section[]): Step[] {
@@ -55,10 +57,12 @@ function buildSteps(sections: Section[]): Step[] {
       { kind: "chapter", ci },
       ...c.questions.map((_, qi): Step => ({ kind: "question", ci, qi })),
     ]),
+    { kind: "review" },
     { kind: "finale" },
   ];
 }
 
+const reviewStep = (steps: Step[]) => steps.findIndex((s) => s.kind === "review");
 const sectionStep = (steps: Step[], ci: number) => steps.findIndex((s) => s.kind === "chapter" && s.ci === ci);
 const sectionDone = (sections: Section[], ci: number, answers: Record<string, Answer>) =>
   sections[ci].questions.every((q) => isDone(answers[q.id]));
@@ -229,7 +233,7 @@ export function Journey({
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setNavOpen(false);
-      if (e.key === "Enter" && !isTyping(e) && step.kind !== "finale" && !navOpen && !locked) {
+      if (e.key === "Enter" && !isTyping(e) && step.kind !== "finale" && step.kind !== "review" && !navOpen && !locked) {
         e.preventDefault();
         next();
       }
@@ -247,7 +251,8 @@ export function Journey({
     else if (step.kind === "question") {
       const q = sections[step.ci].questions[step.qi];
       say(pick(TYPE_LINES[q.type]), q.type === "longtext" ? "thinking" : "happy");
-    } else say("You did it! I'm so proud 🥹", "love");
+    } else if (step.kind === "review") say("Last look! Anything to polish? ✨", "thinking");
+    else say("You did it! I'm so proud 🥹", "love");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, loaded]);
 
@@ -394,7 +399,7 @@ export function Journey({
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3.5 sm:px-6">
           <Logo />
           <p className="label hidden text-muted md:block">
-            {currentCi >= 0 ? `Section ${pad(currentCi + 1)} · ${sections[currentCi].heading}` : step.kind === "finale" ? "Release" : "Intro"}
+            {currentCi >= 0 ? `Section ${pad(currentCi + 1)} · ${sections[currentCi].heading}` : step.kind === "finale" ? "Release" : step.kind === "review" ? "Review" : "Intro"}
           </p>
           <div className="ml-auto flex items-center gap-2.5">
             <SaveIndicator state={saveState} />
@@ -472,6 +477,14 @@ export function Journey({
                   onReact={onReact}
                 />
               )}
+              {step.kind === "review" && (
+                <Review
+                  answers={answers}
+                  update={update}
+                  onContinue={() => go(steps.length - 1)}
+                  submitSlot={!preview ? <SubmitPanel openCount={total - doneCount} onSubmit={submit} /> : null}
+                />
+              )}
               {step.kind === "finale" && (
                 <Finale
                   me={me}
@@ -480,7 +493,7 @@ export function Journey({
                   skipped={doneCount - answeredCount}
                   xp={xp}
                   badges={badges}
-                  onEdit={() => go(sectionStep(steps, 0))}
+                  onEdit={() => go(reviewStep(steps))}
                   firstOpen={() => {
                     const q = all.find((x) => !isDone(answers[x.id]));
                     return q
@@ -589,6 +602,12 @@ function SectionNav({
           );
         })}
       </ol>
+      <button
+        onClick={() => go(reviewStep(steps))}
+        className={`label mt-3 block ${step.kind === "review" ? "text-ink" : "text-muted hover:text-ink"}`}
+      >
+        ↳ Review
+      </button>
       <button
         onClick={() => go(steps.length - 1)}
         className={`label mt-3 block ${step.kind === "finale" ? "text-ink" : "text-muted hover:text-ink"}`}
@@ -805,6 +824,160 @@ function QuestionStep({
         <p className="mt-4 text-sm text-muted">You skipped this one earlier. Totally fine. Answer it if you like.</p>
       )}
     </div>
+  );
+}
+
+/** Every answer on one page, editable in place. The last look before submitting. */
+function Review({
+  answers,
+  update,
+  onContinue,
+  submitSlot,
+}: {
+  answers: Record<string, Answer>;
+  update: (qid: string, a: Answer) => void;
+  onContinue: () => void;
+  submitSlot: React.ReactNode;
+}) {
+  const { sections, all } = useJourney();
+  const [openId, setOpenId] = useState<string | null>(null);
+  const numbers = useMemo(() => new Map(all.map((q) => [q.id, q.number])), [all]);
+  const answered = all.filter((q) => hasContent(answers[q.id])).length;
+  const skipped = all.filter((q) => answers[q.id]?.skipped && !hasContent(answers[q.id])).length;
+  const open = all.length - answered - skipped;
+
+  return (
+    <div>
+      <p className="label text-muted">Review</p>
+      <h1 className="display mt-4 text-[56px] uppercase sm:text-[84px]">
+        Look it
+        <br />
+        <span className="mark-lime">over.</span>
+      </h1>
+      <p className="mt-6 text-lg leading-relaxed">
+        Click any answer to change it. Everything saves automatically.
+      </p>
+      <div className="mt-6 flex flex-wrap gap-2 text-sm">
+        <span className="rounded-full bg-ink px-3 py-1 font-semibold text-bg">{answered} answered</span>
+        <span className="rounded-full border-[1.5px] border-dashed border-edge px-3 py-1 font-semibold">{skipped} skipped</span>
+        <span className="ink rounded-full px-3 py-1 font-semibold text-muted">{open} open</span>
+      </div>
+
+      <div className="mt-12 space-y-12">
+        {sections.map((c) => {
+          const d = c.questions.filter((q) => isDone(answers[q.id])).length;
+          return (
+            <section key={c.id}>
+              <div className="mb-4 flex items-end justify-between gap-3">
+                <h2 className="display text-3xl uppercase sm:text-4xl">
+                  <span className="mark-lime">{c.heading}</span>
+                </h2>
+                <span className="label shrink-0 tabular-nums text-muted">
+                  {d}/{c.questions.length}
+                </span>
+              </div>
+              <div className="space-y-2.5">
+                {c.questions.map((q) => (
+                  <ReviewCard
+                    key={q.id}
+                    number={numbers.get(q.id) ?? 0}
+                    question={q}
+                    answer={answers[q.id]}
+                    open={openId === q.id}
+                    onOpen={() => setOpenId(q.id)}
+                    onClose={() => setOpenId(null)}
+                    onChange={(a) => update(q.id, a)}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+
+      {submitSlot}
+
+      <div className="mt-10 flex flex-wrap items-center gap-3">
+        <PrimaryButton onClick={onContinue}>Continue to Release</PrimaryButton>
+      </div>
+    </div>
+  );
+}
+
+function ReviewCard({
+  number,
+  question: q,
+  answer,
+  open,
+  onOpen,
+  onClose,
+  onChange,
+}: {
+  number: number;
+  question: Section["questions"][number];
+  answer: Answer | undefined;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onChange: (a: Answer) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [open]);
+  const filled = hasContent(answer);
+  const skipped = !!answer?.skipped && !filled;
+  const status = filled ? (
+    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-lime text-[11px] font-bold text-[#161616]">✓</span>
+  ) : skipped ? (
+    <span className="size-6 shrink-0 rounded-full border-[1.5px] border-dashed border-edge" />
+  ) : (
+    <span className="size-6 shrink-0 rounded-full border-[1.5px] border-line" />
+  );
+
+  if (open)
+    return (
+      <div ref={ref} className="ink scroll-mt-28 rounded-2xl bg-panel p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          {status}
+          <div className="min-w-0 flex-1">
+            <p className="label text-muted">Q{String(number).padStart(2, "0")}</p>
+            <p className="display mt-1 text-2xl">{q.prompt}</p>
+            {q.hint && <p className="mt-1 text-sm text-muted">{q.hint}</p>}
+          </div>
+        </div>
+        <div className="mt-5">
+          <QuestionInput question={q} value={answer} onChange={onChange} onSubmit={onClose} />
+        </div>
+        <div className="mt-5 flex justify-end">
+          <button onClick={onClose} className="ink-hover inline-flex items-center gap-2 rounded-full bg-ink py-1.5 pl-5 pr-1.5 text-bg">
+            <span className="label text-[12px]">Done</span>
+            <span className="grid size-7 place-items-center rounded-full bg-lime text-xs font-bold text-[#161616]">✓</span>
+          </button>
+        </div>
+      </div>
+    );
+
+  return (
+    <button
+      onClick={onOpen}
+      className={`group flex w-full items-start gap-3 rounded-2xl p-4 text-left transition hover:bg-accent-soft ${
+        skipped ? "border-[1.5px] border-dashed border-edge" : filled ? "ink bg-panel" : "border-[1.5px] border-line"
+      }`}
+    >
+      {status}
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm text-muted">
+          <span className="font-bold text-ink">Q{String(number).padStart(2, "0")}</span> · {q.prompt}
+        </span>
+        <span
+          className={`mt-1.5 block whitespace-pre-wrap leading-relaxed ${filled ? "line-clamp-4" : "text-sm text-muted"}`}
+        >
+          {filled ? formatAnswer(q, answer) : skipped ? "Skipped · tap to answer" : "Not answered yet · tap to answer"}
+        </span>
+      </span>
+      <span className="label shrink-0 text-muted opacity-0 transition group-hover:opacity-100 max-sm:hidden">Edit ✎</span>
+    </button>
   );
 }
 
